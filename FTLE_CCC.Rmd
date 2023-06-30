@@ -1,0 +1,293 @@
+---
+title: "FTLE_Example"
+author: "Taiki Sakai"
+date: "2023-06-09"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Calculatin and Plotting FTLE
+
+This document is a guide to calculating and plotting FTLEs based on the
+online Restoration and TRACE tools.
+
+First source required helper functions.
+
+```{r, message=FALSE}
+library(here)
+# sourcing Taiki's functions
+source(here('FTLEfunctions.R'))
+# and James' HFRADAR download function
+source(here('hfRadar_Download.R'))
+```
+
+### Load GPS Data for Study Area
+
+Starting point for analysis is to load some GPS data for the area we
+want to study. Default expectation is that these are from our drifting
+buoys, but the only real requirement is a dataframe with columns "UTC",
+"Latitude", and "Longitude". Can read in multiple GPS files and combine
+them in to a single dataframe.
+
+```{r}
+library(readr)
+# this can be a vector of multiple
+gpsFiles <- c(here('CCC_0723.csv'))
+gps <- bind_rows(lapply(gpsFiles, read_csv,show_col_types = FALSE))
+gps$UTC<-as.POSIXct(gps$UTC,format='%m/%d/%y %H:%M')
+```
+
+### Download Current Data
+
+Next step is to download the HFRADAR or HYCOM data to use for
+calculating the FTLE. For HYCOM data we will download using the
+`matchEnvData` function from PAMmisc, for HFRADAR data we will use
+`gpsToHfradarDownload`, a wrapper around James Fahlbusch's
+`hfRadar_Download`.
+
+First setup a couple parameters for our data download. `intDays` is the
+number of integration days we want to use for the FTLE calculation.
+`coordBuffer` is how far around our GPS data we want to download
+environmental data (decimal degrees). For example, if our GPS data runs
+from Latitude 32 to 34, `coordBuffer = 1.5` will download data from
+Latitude 30.5 to 35.5.
+
+```{r}
+intDays <- 2
+coordBuffer <- 1.5
+```
+
+#### HYCOM
+
+If using HYCOM data, we need to add a "Depth" column to our data with
+value 0 so that we don't needlessly download all the depth levels
+available in HYCOM.
+
+```{r, eval=FALSE}
+# Hycom
+library(PAMmisc)
+gps$Depth <- 0
+currentNc <- 'CCC_0723_HYCOM.nc'
+gps <- matchEnvData(gps, nc=PAMmisc::hycomList, fileName = currentNc, var=c('water_u', 'water_v'), timeout=360,
+                    buffer = c(coordBuffer, coordBuffer, intDays * 24 * 3600))
+# currentNc <- here('ADRIFT067_HYCOM.nc')
+# gps <- matchEnvData(gps, nc=currentNc, var=c('water_u', 'water_v'), timeout=360,
+#                     buffer = c(coordBuffer, coordBuffer, intDays * 24 * 3600))
+```
+
+#### HFRADAR
+
+If using HFRADAR data we don't need the "Depth" information because
+HFRADAR only has surface currents.
+
+currentNc \<- gpsToHfradarDownload(gps, days=intDays,
+buffer=coordBuffer, name='ADRIFT067')
+
+```{r, eval=FALSE}
+# HFRADAR
+currentNc <- gpsToHfradarDownload(gps, days=intDays, buffer=coordBuffer, name='CCC_0723')
+```
+
+Now we need to upload this `currentNc` file to the THREDDS server so
+that we can run it through the restoration tool
+(<http://transport.me.berkeley.edu/restore/>).
+
+I've created a helper function to handle this FTP upload to the Berkeley
+transport FTP server, but it requires password login information. For
+safekeeping, that info is stored in a file secrets.yaml that we will
+read in. We'll upload these to ADRIFT/Raw.
+
+### Upload to THREDDS and Restoration
+
+```{r, eval=FALSE}
+library(yaml)
+pw <- read_yaml(here('secrets.yaml'))
+transportFtpUpload(currentNc, pw=pw$trace_pw, folder='ADRIFT/Raw')
+```
+
+The function should return "OK", and then your file should be visible
+here:
+<http://transport.me.berkeley.edu/thredds/catalog/public/Goldbogen-Lab/ADRIFT/Raw/catalog.html>
+Click on your uploaded file, then click on the link for "OPENDAP". Copy
+the full link in the "Data URL" field, and paste it into the "Enter URL"
+field of the Restore tool. Hit "Scan Data" and ensure that it gives a
+positive response.
+
+Settings to check:
+
+**Time:**
+
+-   Time Interval - Check Process whole dataset times
+
+**Domain:**
+
+-   Specify Bounds - Check Use whole dataset bounds
+
+**Generate Ensembles:**
+
+-   Nothing checked
+
+**Restore Data:**
+
+-   Detect Domain - Check Concave hull around available points, enter
+    10km.
+-   Detect Land - Check Detect and Exclude Land
+-   Refine Grid - Refinement level 1
+
+Hit **Restore**!
+
+Once it has finished running, hit **Download**, then move that NetCDF
+file back to this project directory. I recommend re-naming it to have
+the same name as the original .nc file, but with '\_restored' added at
+the end. Then we'll use the FTP function to upload the restored file to
+the "ADRIFT/Restored" folder.
+
+### Upload to THREDDS and TRACE
+
+```{r, eval=1}
+# change to whatever you renamed your restored nc file to
+restoredNc <- 'CCC_0723_HFRADAR_US_West_Coast_6km_Resolution_Hourly_Restored.nc'
+transportFtpUpload(restoredNc, pw = pw$trace_pw, folder='ADRIFT/Restored')
+```
+
+That function should again return "OK", and your file should be visible
+here:
+<http://transport.me.berkeley.edu/thredds/catalog/public/Goldbogen-Lab/ADRIFT/Restored/catalog.html>
+Same as before OPENDAP -\> copy "Data URL", paste that in the "Enter
+URL" field of the TRACE tool
+(<http://transport.me.berkeley.edu/trace/>). Hit "Scan Data" and ensure
+it gives a positive response.
+
+Settings for this tool are slightly more complicated, I created a helper
+function to report the proper number of values for some of the settings,
+`traceSettings`. Its inputs are the restored NetCDF file, `days`, the
+integration days we assigned earlier, and `increment`, which is how far
+apart (hours) we want each FTLE frame to be. Lower values of `increment`
+will take more total calculation time, 4 might be a reasonable starting
+place.
+
+```{r}
+# note the reported Lat, Lon, and Times values for later
+traceSettings(restoredNc, days=intDays, increment=4)
+```
+
+**Coordinate system**
+
+-   Check Cartesian
+
+**Additional data**
+
+-   Check Include land mask variable in input data, and check Apply
+    free-slip boundary condition near land.
+
+**Time**
+
+-   Initial Time - auto-fills from "Scan Data" - see note in "Time
+    Direction" below
+-   Initialization type - Mutliple initial times
+-   Number of initial times - the "Times" reported from `traceSettings`
+-   Initial times increment - same as `increment` used earlier
+-   Integration duration - same as `intDays` parameter you entered above
+-   Time direction - forward for **repelling** FTLE, check backward for
+    **attracting** FTLE. **NOTE** if you check backward, add time to
+    **Initial time** equal to **Integration duration**
+
+**Tracers**
+
+-   Select Uniform grid points
+-   Number of tracers along longitude - "Lon" value from `traceSettings`
+-   Number of tracers along latitude - "Lat" value from `traceSettings`
+-   Check Use dataset bounds
+
+**Solver**
+
+-   Leave all as default
+
+**Output**
+
+-   Output Variables - Check output trajectory coordinates at
+    observation times
+-   Output Variables - Check Compute FTLE on trajectory
+-   Array structure - Select Grid-indexed arrays
+-   Visualization - Select none, I ran into errors trying to visualize
+    in the web app
+
+Hit **Run**! This will take a while, but I've noticed that the web app
+can lose connection (and thus not finish calculations) if you leave your
+computer for too long. I've made a habit of checking on the calculations
+every couple minutes to make sure its still running.
+
+Once finished hit download and move the file back to this project
+directory. I recommend renaming it to have "forward" or "backward" in
+the name depending on the time direction selected.
+
+### Working With FTLE Output
+
+Now we can read the FTLE data in to R with helper function `traceToDf`.
+This needs to know if it was run forward or backward, and the number of
+integration days (these are used to properly assign times - times for
+each FTLE frame are set to be the middle of the integration period).
+
+```{r, cache=TRUE}
+ftleFile <- here('CCC_0723_Results.nc')
+# this can take a while and creates a very large dataframe
+ftle <- traceToDf(ftleFile, backward=FALSE, days=intDays)
+```
+
+This dataframe contains data for *all* time frames, to make a single
+plot we want to look at one at a time, so we can filter by the `time`
+column. Here lets plot the first time frame.
+
+```{r}
+plotFTLE(ftle[ftle$time == unique(ftle$time)[1], ], gps=gps)
+```
+
+Add wind energy area
+
+```{r}
+WEA<-readRDS(here('WindCallBoundary.rdata'))
+
+# MorroWEA<-data.frame(Latitude = WEA[[2]][[3]][[1]][,2],
+#                      Longitude= WEA[[2]][[3]][[1]][,1]) 
+MorroWEA<-data.frame(Latitude = c(WEA[[2]][[1]][[1]][,2],WEA[[2]][[2]][[1]][,2],WEA[[2]][[3]][[1]][,2]),
+                     Longitude= c(WEA[[2]][[1]][[1]][,1],WEA[[2]][[2]][[1]][,1],WEA[[2]][[3]][[1]][,1]))        
+
+Morro1<-data.frame(Latitude = WEA[[2]][[1]][[1]][,2],
+                     Longitude= WEA[[2]][[1]][[1]][,1])  
+
+Morro3<-data.frame(Latitude = WEA[[2]][[3]][[1]][,2],
+                     Longitude= WEA[[2]][[3]][[1]][,1]) 
+                     
+test+geom_point(data=Morro1,aes(Longitude,Latitude),col='purple',size=.4)+geom_point(data=Morro2,aes(Longitude,Latitude),col='purple',size=.4)+geom_point(data=Morro3,aes(Longitude,Latitude),col='purple',size=.4)
+```
+
+By default this uses the full extent of lat/long ranges in the GPS and
+FTLE data, we can restrict the plot range with `xlim` and `ylim`
+parameters.
+
+```{r}
+plotFTLE(ftle[ftle$time == unique(ftle$time)[8], ], gps=gps,
+         xlim = c(-124, -123), ylim=c(37, 38.5))
+```
+
+You can also create a GIF of the full time duration with the
+`plotFTLEGIF` function, this takes a bit of time to run.
+
+```{r, eval=FALSE}
+plotFTLEGIF(ftle, gps=gps, title='CCC_0723', progress=TRUE, file='CCC_0723_forward.gif')
+```
+
+You can also create side-by-side plots of the forward & backward FTLEs
+if you load in both files and combine them into a single dataframe.
+
+```{r, eval=FALSE}
+# ftleBack <- traceToDf('AD67_hycom_backward.nc', backward=TRUE, days=intDays)
+# ftleAll <- bind_rows(ftle, ftleBack)
+# plotFTLEGIF(ftleAll, gps=gps, title='ADRIFT_067', progress=TRUE, file='ADRIFT_067_both.gif')
+```

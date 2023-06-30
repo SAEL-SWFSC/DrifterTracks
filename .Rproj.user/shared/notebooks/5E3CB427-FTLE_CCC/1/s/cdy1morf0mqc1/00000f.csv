@@ -1,0 +1,7 @@
+"0","# HFRADAR"
+"0","currentNc <- gpsToHfradarDownload(gps, days=intDays, buffer=coordBuffer, name='ADRIFT067')"
+"2","Warning: downloaded length 0 != reported length 2500"
+"2","Warning: cannot open URL 'http://hfrnet-tds.ucsd.edu/thredds/ncss/HFR/USWC/6km/hourly/RTV/HFRADAR_US_West_Coast_6km_Resolution_Hourly_RTV_best.ncd?var=hdop&var=number_of_radials&var=number_of_sites&var=u&var=v&north=39.37995&west=-124.97145&east=-121.62879&south=35.93725&disableProjSubset=on&horizStride=1&time_start=2023-05-06T04:18:07Z&time_end=2023-05-14T01:22:46Z&timeStride=1&addLatLon=true&accept=netcdf': HTTP status was '502 Bad Gateway'"
+"2","Error in download.file(url, ncname, method = ""auto"", quiet = TRUE, mode = ""wb"",  : 
+  cannot open URL 'http://hfrnet-tds.ucsd.edu/thredds/ncss/HFR/USWC/6km/hourly/RTV/HFRADAR_US_West_Coast_6km_Resolution_Hourly_RTV_best.ncd?var=hdop&var=number_of_radials&var=number_of_sites&var=u&var=v&north=39.37995&west=-124.97145&east=-121.62879&south=35.93725&disableProjSubset=on&horizStride=1&time_start=2023-05-06T04:18:07Z&time_end=2023-05-14T01:22:46Z&timeStride=1&addLatLon=true&accept=netcdf'
+"

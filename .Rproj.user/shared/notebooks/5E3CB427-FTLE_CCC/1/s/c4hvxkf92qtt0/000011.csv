@@ -1,0 +1,8 @@
+"0","gps <- matchEnvData(gps, nc=currentNc, var=c('water_u', 'water_v'), timeout=360,
+                    buffer = c(coordBuffer, coordBuffer, intDays * 24 * 3600))
+"
+"1","Error in R_nc4_open: NetCDF: Unknown file format
+"
+"2","Error in nc_open(nc) : 
+  Error in nc_open trying to open file C:/Users/anne.simonis/Documents/GitHub/DrifterTracks/ADRIFT067_HYCOM.nc (return_on_error= FALSE )
+"

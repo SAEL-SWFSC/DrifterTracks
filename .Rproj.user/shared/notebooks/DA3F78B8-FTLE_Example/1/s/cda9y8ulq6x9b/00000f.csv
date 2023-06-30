@@ -1,0 +1,8 @@
+"0","# this can take a while and creates a very large dataframe
+ftle <- traceToDf(ftleFile, backward=FALSE, days=intDays)
+"
+"1","Error in R_nc4_open: No such file or directory
+"
+"2","Error in ncdf4::nc_open(filename, suppress_dimvals = TRUE) : 
+  Error in nc_open trying to open file C:/Users/anne.simonis/Documents/GitHub/DrifterTracks/ADRIFT_067_forward_Results.nc.nc (return_on_error= FALSE )
+"

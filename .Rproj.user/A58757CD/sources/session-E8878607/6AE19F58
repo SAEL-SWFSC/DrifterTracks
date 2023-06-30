@@ -1,0 +1,33 @@
+{
+    "id": "6AE19F58",
+    "path": "~/GitHub/DrifterTracks/FTLE_CCC.Rmd",
+    "project_path": "FTLE_CCC.Rmd",
+    "type": "r_markdown",
+    "hash": "3392826745",
+    "contents": "",
+    "dirty": false,
+    "created": 1687554056940.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "rmdVisualMode": "true",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "1",
+        "cursorPosition": "266,211",
+        "scrollLine": "0",
+        "rmdVisualModeLocation": "8584:5046",
+        "rmdVisualCollapsedChunks": "",
+        "last_setup_crc32": "E8878607bb338d19",
+        "docOutlineSize": "65"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1688165682,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1688165682508,
+    "read_only": false,
+    "read_only_alternatives": []
+}

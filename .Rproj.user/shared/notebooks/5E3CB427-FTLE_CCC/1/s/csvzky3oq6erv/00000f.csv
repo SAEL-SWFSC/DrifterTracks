@@ -1,0 +1,2 @@
+"0","plotFTLE(ftle[ftle$time == unique(ftle$time)[8], ], gps=gps,"
+"0","         xlim = c(-124, -123), ylim=c(37, 38.5))"

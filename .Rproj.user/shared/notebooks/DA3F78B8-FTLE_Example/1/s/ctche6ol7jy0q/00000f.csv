@@ -1,0 +1,5 @@
+"0","# note the reported Lat, Lon, and Times values for later
+traceSettings(restoredNc, days=intDays, increment=4)
+"
+"2","Error in nc_open(nc) : could not find function ""nc_open""
+"
