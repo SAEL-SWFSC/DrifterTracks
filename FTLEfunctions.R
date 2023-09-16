@@ -1,4 +1,5 @@
 # FTLE processing functions
+# Updated 2023-07-05 to make different time label style, mid vs initial
 
 library(animation)
 library(patchwork)
@@ -11,7 +12,9 @@ library(scales)
 library(PAMmisc)
 library(ncdf4)
 
-traceToDf <- function(nc, varname='ftle', backward=FALSE, days=2) {
+
+traceToDf <- function(nc, varname='ftle', backward=FALSE, days=2, timeStyle=c('initial', 'mid')) {
+    timeStyle <- match.arg(timeStyle)
     trace <- stack(nc, varname=varname)
     allDf <- vector('list', length=length(trace@layers))
     for(i in seq_along(allDf)) {
@@ -22,24 +25,23 @@ traceToDf <- function(nc, varname='ftle', backward=FALSE, days=2) {
         if(is.na(time)) {
             time <- as.POSIXct(names(trace)[i], format='X%Y.%m.%d', tz='UTC')
         }
-        if(isTRUE(backward)) {
-            time <- time - days * 24 * 3600
-            df$type <- 'Backward'
-        } else {
-            df$type <- 'Forward'
+        # forward we had half days, backward we subtract half days from initial
+        if(timeStyle == 'mid') {
+            time <- time + 24 * 3600 * days / 2 * ifelse(backward, -1, 1)
         }
+        df$type <- ifelse(backward, 'Backward', 'Forward')
         df$time <- time
         allDf[[i]] <- df
     }
     allDf <- bind_rows(allDf)
     allDf$Longitude <- PAMmisc:::to180(allDf$Longitude)
-    allDf$time <- allDf$time + 24 * 3600 * days / 2
+    # allDf$time <- allDf$time + 24 * 3600 * days / 2
     allDf
 }
 
 plotFTLELoop <-function(trace, gps, gpsGroup=NULL,
-                    xlim=NULL, ylim=NULL, zlim=NULL,
-                    title=NULL, progress=TRUE) {
+                        xlim=NULL, ylim=NULL, zlim=NULL,
+                        title=NULL, showPath=TRUE, progress=TRUE) {
     if(is.null(xlim)) {
         xlim <- range(c(gps$Longitude, trace$Longitude)) + c(-.01, .01)
     }
@@ -50,6 +52,10 @@ plotFTLELoop <-function(trace, gps, gpsGroup=NULL,
         zlim <- range(trace$FTLE)
     }
     gps <- arrange(gps, UTC)
+    if(!is.null(gpsGroup) &&
+       !gpsGroup %in% colnames(gps)) {
+        gpsGroup <- NULL
+    }
     if(is.null(gpsGroup)) {
         starts <- gps[c(1, nrow(gps)), ]
         starts$location <- c('Start', 'End')
@@ -67,17 +73,17 @@ plotFTLELoop <-function(trace, gps, gpsGroup=NULL,
         pb <- txtProgressBar(min=0, max=length(unique(trace$time)), style=3)
         ix <- 1
     }
-    splitPlot <- 'type' %in% colnames(trace) && length(unique(trace[['type']]) > 1)
+    splitPlot <- 'type' %in% colnames(trace) && (length(unique(trace[['type']])) > 1)
     lapply(split(trace, trace$time), function(x) {
         if(splitPlot) {
             # browser()
             g <- plotFTLE(x[x$type == 'Forward', ], xlim, ylim, zlim,
-                             title=NULL, gps, gpsGroup, starts=starts) +
+                          title=NULL, gps, gpsGroup, starts=starts, showPath=showPath) +
                 plotFTLE(x[x$type == 'Backward', ], xlim, ylim, zlim,
-                            title=NULL, gps, gpsGroup, starts=starts) +
+                         title=NULL, gps, gpsGroup, starts=starts, showPath=showPath) +
                 plot_annotation(title)
         } else {
-            g <- plotFTLE(x, xlim, ylim, zlim, title, gps, gpsGroup, starts)
+            g <- plotFTLE(x, xlim, ylim, zlim, title, gps, gpsGroup, starts, showPath=showPath)
         }
         print(g)
         if(progress) {
@@ -89,16 +95,18 @@ plotFTLELoop <-function(trace, gps, gpsGroup=NULL,
 
 plotFTLEGIF <- function(trace, gps, gpsGroup='DriftName',
                         xlim=NULL, ylim=NULL, zlim=NULL,
-                        title=NULL, progress=TRUE, height=800, width=1200, file, interval=.2) {
+                        title=NULL, progress=TRUE, height=800, width=1200, file, interval=.2,
+                        showPath=TRUE) {
     saveGIF(
         plotFTLELoop(trace=trace, gps=gps, gpsGroup=gpsGroup,
                      xlim=xlim, ylim=ylim, zlim=zlim,
-                     title=title, progress=progress),
+                     title=title, progress=progress, showPath=showPath),
         interval=interval, movie.name=file, ani.height=height, ani.width=width
-        )
+    )
 }
 
-plotFTLE <- function(x, xlim=NULL, ylim=NULL, zlim=NULL, title=NULL, gps, gpsGroup=NULL, starts=NULL) {
+plotFTLE <- function(x, xlim=NULL, ylim=NULL, zlim=NULL, title=NULL, gps, gpsGroup=NULL, starts=NULL,
+                     showPath=TRUE) {
     if(is.null(xlim)) {
         xlim <- range(c(gps$Longitude, x$Longitude)) + c(-.01, .01)
     }
@@ -143,8 +151,8 @@ plotFTLE <- function(x, xlim=NULL, ylim=NULL, zlim=NULL, title=NULL, gps, gpsGro
         uniType <- unique(x[['type']])
         if(length(uniType) == 1) {
             typeLabel <- switch(uniType,
-                               'Forward' = 'Forward (Repelling) ',
-                               'Backward' = 'Backward (Attracting) ')
+                                'Forward' = 'Forward (Repelling) ',
+                                'Backward' = 'Backward (Attracting) ')
             subtitle <- paste0(typeLabel, subtitle)
         }
     }
@@ -168,11 +176,12 @@ plotFTLE <- function(x, xlim=NULL, ylim=NULL, zlim=NULL, title=NULL, gps, gpsGro
         ggtitle(title, subtitle=subtitle) +
         geom_point(data=starts, aes(x=Longitude, y=Latitude, col=location)) +
         geom_point(data=currentPoint, aes(x=Longitude, y=Latitude), col='black', size=3)
-
-    if(is.null(gpsGroup)) {
-        g <- g + geom_path(data=gps, aes(x=Longitude, y=Latitude), col='black')
-    } else {
-        g <- g + geom_path(data=gps, aes(x=Longitude, y=Latitude, group=.data[[gpsGroup]]), col='black')
+    if(showPath) {
+        if(is.null(gpsGroup)) {
+            g <- g + geom_path(data=gps, aes(x=Longitude, y=Latitude), col='black')
+        } else {
+            g <- g + geom_path(data=gps, aes(x=Longitude, y=Latitude, group=.data[[gpsGroup]]), col='black')
+        }
     }
     g
 }

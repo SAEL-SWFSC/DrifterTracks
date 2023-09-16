@@ -12,7 +12,7 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Calculatin and Plotting FTLE
+## Calculating and Plotting FTLE
 
 This document is a guide to calculating and plotting FTLEs based on the
 online Restoration and TRACE tools.
@@ -38,9 +38,9 @@ them in to a single dataframe.
 ```{r}
 library(readr)
 # this can be a vector of multiple
-gpsFiles <- c(here('CCC_0723.csv'))
+gpsFiles <- c(here('ACCESS_West_Stations.csv'))
 gps <- bind_rows(lapply(gpsFiles, read_csv,show_col_types = FALSE))
-gps$UTC<-as.POSIXct(gps$UTC,format='%m/%d/%y %H:%M')
+gps$UTC<-as.POSIXct(gps$UTC,format='%m/%d/%Y %H:%M')
 ```
 
 ### Download Current Data
@@ -91,7 +91,7 @@ buffer=coordBuffer, name='ADRIFT067')
 
 ```{r, eval=FALSE}
 # HFRADAR
-currentNc <- gpsToHfradarDownload(gps, days=intDays, buffer=coordBuffer, name='CCC_0723')
+currentNc <- gpsToHfradarDownload(gps, days=intDays, buffer=coordBuffer, name='ACCESS_0923')
 ```
 
 Now we need to upload this `currentNc` file to the THREDDS server so
@@ -102,6 +102,8 @@ I've created a helper function to handle this FTP upload to the Berkeley
 transport FTP server, but it requires password login information. For
 safekeeping, that info is stored in a file secrets.yaml that we will
 read in. We'll upload these to ADRIFT/Raw.
+
+**We can use the token "noaadgov" for direct data uploads.**
 
 ### Upload to THREDDS and Restoration
 
@@ -152,7 +154,8 @@ the "ADRIFT/Restored" folder.
 
 ```{r, eval=1}
 # change to whatever you renamed your restored nc file to
-restoredNc <- 'CCC_0723_HFRADAR_US_West_Coast_6km_Resolution_Hourly_Restored.nc'
+# restoredNc <- 'CCC_0723_HFRADAR_US_West_Coast_6km_Resolution_Hourly_Restored.nc'
+restoredNc <- 'ACCESS_0923_HFRADAR_US_West_Coast_6km_Resolution_Hourly_Restored.nc'
 transportFtpUpload(restoredNc, pw = pw$trace_pw, folder='ADRIFT/Restored')
 ```
 
@@ -235,7 +238,7 @@ integration days (these are used to properly assign times - times for
 each FTLE frame are set to be the middle of the integration period).
 
 ```{r, cache=TRUE}
-ftleFile <- here('CCC_0723_Results.nc')
+ftleFile <- here('ACCESS_0923_Results.nc')
 # this can take a while and creates a very large dataframe
 ftle <- traceToDf(ftleFile, backward=FALSE, days=intDays)
 ```
@@ -245,26 +248,24 @@ plot we want to look at one at a time, so we can filter by the `time`
 column. Here lets plot the first time frame.
 
 ```{r}
-plotFTLE(ftle[ftle$time == unique(ftle$time)[1], ], gps=gps)
+plotFTLE(ftle[ftle$time == unique(ftle$time)[1], ], gps=gps, gpsGroup='Line',showPath=FALSE)
 ```
 
 Add wind energy area
 
 ```{r}
+Map<-plotFTLE(ftle[ftle$time == unique(ftle$time)[1], ], gps=gps)
+
 WEA<-readRDS(here('WindCallBoundary.rdata'))
 
-# MorroWEA<-data.frame(Latitude = WEA[[2]][[3]][[1]][,2],
-#                      Longitude= WEA[[2]][[3]][[1]][,1]) 
-MorroWEA<-data.frame(Latitude = c(WEA[[2]][[1]][[1]][,2],WEA[[2]][[2]][[1]][,2],WEA[[2]][[3]][[1]][,2]),
-                     Longitude= c(WEA[[2]][[1]][[1]][,1],WEA[[2]][[2]][[1]][,1],WEA[[2]][[3]][[1]][,1]))        
+Map+geom_sf(data=WEA, fill=NA, col='purple',lwd=1)+geom_point(data=gps,aes(Longitude,Latitude),color='orange')
+```
 
-Morro1<-data.frame(Latitude = WEA[[2]][[1]][[1]][,2],
-                     Longitude= WEA[[2]][[1]][[1]][,1])  
+Add station labels
 
-Morro3<-data.frame(Latitude = WEA[[2]][[3]][[1]][,2],
-                     Longitude= WEA[[2]][[3]][[1]][,1]) 
-                     
-test+geom_point(data=Morro1,aes(Longitude,Latitude),col='purple',size=.4)+geom_point(data=Morro2,aes(Longitude,Latitude),col='purple',size=.4)+geom_point(data=Morro3,aes(Longitude,Latitude),col='purple',size=.4)
+```{r}
+Map<-plotFTLE(ftle[ftle$time == unique(ftle$time)[1], ], gps=gps,showPath=FALSE, gpsGroup='Line')
+Map+geom_point(data=gps,aes(Longitude,Latitude))+geom_text(data=gps,aes(Longitude,Latitude,label=Line),size=3,hjust=2.5)
 ```
 
 By default this uses the full extent of lat/long ranges in the GPS and
@@ -272,15 +273,16 @@ FTLE data, we can restrict the plot range with `xlim` and `ylim`
 parameters.
 
 ```{r}
-plotFTLE(ftle[ftle$time == unique(ftle$time)[8], ], gps=gps,
-         xlim = c(-124, -123), ylim=c(37, 38.5))
+Map<-plotFTLE(ftle[ftle$time == unique(ftle$time)[8], ], gps=gps,
+         xlim = c(-125, -122), ylim=c(37, 39),showPath=FALSE)
+Map<-Map+geom_point(data=gps,aes(Longitude,Latitude))+geom_text(data=gps,aes(Longitude,Latitude,label=Line),size=2,hjust=-.5)
 ```
 
 You can also create a GIF of the full time duration with the
 `plotFTLEGIF` function, this takes a bit of time to run.
 
 ```{r, eval=FALSE}
-plotFTLEGIF(ftle, gps=gps, title='CCC_0723', progress=TRUE, file='CCC_0723_forward.gif')
+plotFTLEGIF(ftle, gps=gps, title='ACCESS_0923',gpsGroup='Line',showPath=FALSE,progress=TRUE,file='ACCESS_0923_forward.gif')
 ```
 
 You can also create side-by-side plots of the forward & backward FTLEs
